@@ -1,31 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import ProductCard from '../components/ProductCard';
+import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import './ProductDetail.css';
 
 const ProductDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [product, setProduct] = useState(null);
-  const [recommendedProducts, setRecommendedProducts] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [message, setMessage] = useState('');
+  const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
     fetchProduct();
-    fetchRecommendations();
-  }, [id]);
+    if (isAuthenticated) {
+      fetchRecommendations();
+    }
+  }, [id, isAuthenticated]);
 
   const fetchProduct = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/products/${id}`);
-      if (response.ok) {
-        const productData = await response.json();
-        setProduct(productData);
+      const response = await axios.get(`http://localhost:5000/api/products?product_id=${id}`);
+      const products = response.data.products || [];
+      const foundProduct = products.find(p => p.id === parseInt(id));
+      
+      if (foundProduct) {
+        setProduct(foundProduct);
       } else {
-        setError('Product not found');
+        setMessage('Product not found');
       }
-    } catch (err) {
-      setError('Failed to load product');
-      console.error('Error fetching product:', err);
+    } catch (error) {
+      console.error('Error fetching product:', error);
+      setMessage('Error loading product');
     } finally {
       setLoading(false);
     }
@@ -33,174 +42,162 @@ const ProductDetail = () => {
 
   const fetchRecommendations = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/products/${id}/recommendations`);
-      if (response.ok) {
-        const data = await response.json();
-        setRecommendedProducts(data.recommendations || []);
-      }
-    } catch (err) {
-      console.error('Error fetching recommendations:', err);
+      const response = await axios.get(`http://localhost:5000/api/recommendations?limit=4`);
+      setRecommendations(response.data.recommendations || []);
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
     }
   };
 
-  const addToCart = () => {
-    alert(`Added ${product.name} to cart!`);
+  const addToCart = async () => {
+    if (!isAuthenticated) {
+      setMessage('Please login to add items to cart');
+      return;
+    }
+
+    try {
+      await axios.post('http://localhost:5000/api/cart', {
+        product_id: parseInt(id),
+        quantity: quantity
+      });
+      setMessage(`${quantity} item(s) added to cart!`);
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      setMessage('Error adding to cart: ' + (error.response?.data?.message || 'Unknown error'));
+      setTimeout(() => setMessage(''), 3000);
+    }
   };
+
+  const addToWishlist = async () => {
+    if (!isAuthenticated) {
+      setMessage('Please login to add items to wishlist');
+      return;
+    }
+
+    try {
+      await axios.post('http://localhost:5000/api/wishlist', {
+        product_id: parseInt(id)
+      });
+      setMessage('Product added to wishlist!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      setMessage('Error adding to wishlist: ' + (error.response?.data?.message || 'Unknown error'));
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  const RecommendationCard = ({ product }) => (
+    <div className="recommendation-card" onClick={() => navigate(`/products/${product.id}`)}>
+      <div className="rec-image">
+        <span className="rec-placeholder">📦</span>
+      </div>
+      <div className="rec-info">
+        <h4>{product.name}</h4>
+        <p className="rec-price">${product.price?.toFixed(2)}</p>
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
-      <div className="container" style={{ paddingTop: '2rem', textAlign: 'center' }}>
-        <div style={{ 
-          display: 'inline-block',
-          width: '40px',
-          height: '40px',
-          border: '4px solid #f3f3f3',
-          borderTop: '4px solid #007bff',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
-          marginBottom: '1rem'
-        }}></div>
-        <p>Loading product...</p>
+      <div className="product-detail-container">
+        <div className="loading">Loading product details...</div>
       </div>
     );
   }
 
-  if (error || !product) {
+  if (!product) {
     return (
-      <div className="container" style={{ paddingTop: '2rem', textAlign: 'center' }}>
-        <h2>Product Not Found</h2>
-        <p>{error || 'The product you are looking for does not exist.'}</p>
+      <div className="product-detail-container">
+        <div className="error-state">
+          <h2>Product Not Found</h2>
+          <p>The product you're looking for doesn't exist.</p>
+          <button onClick={() => navigate('/products')} className="btn btn-primary">
+            Back to Products
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
-      {/* Product Details */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 1fr', 
-        gap: '3rem', 
-        marginBottom: '4rem' 
-      }}>
-        {/* Product Image */}
-        <div>
-          <img 
-            src={product.image_url || "/api/placeholder/400/300"} 
-            alt={product.name}
-            style={{
-              width: '100%',
-              borderRadius: '8px',
-              boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
-            }}
-          />
+    <div className="product-detail-container">
+      {message && (
+        <div className={`message ${message.includes('Error') ? 'error' : 'success'}`}>
+          {message}
+        </div>
+      )}
+
+      <div className="product-detail">
+        <div className="product-image-large">
+          <span className="product-placeholder-large">📦</span>
         </div>
 
-        {/* Product Info */}
-        <div>
-          <h1 style={{ fontSize: '2rem', marginBottom: '1rem' }}>{product.name}</h1>
+        <div className="product-details">
+          <nav className="breadcrumb">
+            <span onClick={() => navigate('/products')} className="breadcrumb-link">
+              Products
+            </span>
+            <span className="breadcrumb-separator">&gt;</span>
+            <span className="breadcrumb-current">{product.name}</span>
+          </nav>
+
+          <h1 className="product-title">{product.name}</h1>
+          <p className="product-category-tag">{product.category}</p>
           
-          <div style={{ 
-            fontSize: '1.5rem', 
-            fontWeight: 'bold', 
-            color: '#007bff', 
-            marginBottom: '1rem' 
-          }}>
-            ${product.price}
+          <div className="product-description-full">
+            <p>{product.description}</p>
           </div>
 
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem', 
-            marginBottom: '2rem' 
-          }}>
-            <span style={{ color: '#ffc107', fontSize: '1.2rem' }}>
-              {'⭐'.repeat(Math.floor(product.rating))}
-            </span>
-            <span>({product.rating}) • Stock: {product.stock}</span>
+          <div className="product-price-large">
+            ${product.price?.toFixed(2)}
           </div>
 
-          <p style={{ 
-            fontSize: '1.1rem', 
-            lineHeight: '1.6', 
-            marginBottom: '2rem',
-            color: '#666'
-          }}>
-            {product.description}
-          </p>
+          {isAuthenticated && (
+            <div className="product-actions-detailed">
+              <div className="quantity-selector">
+                <label htmlFor="quantity">Quantity:</label>
+                <select
+                  id="quantity"
+                  value={quantity}
+                  onChange={(e) => setQuantity(parseInt(e.target.value))}
+                  className="quantity-select"
+                >
+                  {[...Array(10)].map((_, i) => (
+                    <option key={i + 1} value={i + 1}>{i + 1}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div style={{ marginBottom: '2rem' }}>
-            <span style={{ 
-              display: 'inline-block',
-              backgroundColor: '#e9ecef',
-              padding: '0.5rem 1rem',
-              borderRadius: '20px',
-              fontSize: '0.9rem',
-              color: '#495057'
-            }}>
-              Category: {product.category_name?.replace('_', ' ').toUpperCase()}
-            </span>
-          </div>
-
-          {/* Product Specifications */}
-          {product.weight_g && (
-            <div style={{ marginBottom: '2rem' }}>
-              <h3 style={{ marginBottom: '1rem' }}>Specifications</h3>
-              <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                {product.weight_g && <p>Weight: {product.weight_g}g</p>}
-                {product.length_cm && product.width_cm && product.height_cm && (
-                  <p>Dimensions: {product.length_cm} × {product.width_cm} × {product.height_cm} cm</p>
-                )}
-                {product.photos_qty && <p>Photos available: {product.photos_qty}</p>}
+              <div className="action-buttons">
+                <button onClick={addToCart} className="btn btn-primary btn-large">
+                  Add to Cart
+                </button>
+                <button onClick={addToWishlist} className="btn btn-outline btn-large">
+                  ♡ Add to Wishlist
+                </button>
               </div>
             </div>
           )}
 
-          {/* Add to Cart Button */}
-          <button 
-            onClick={addToCart}
-            style={{
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              padding: '1rem 2rem',
-              borderRadius: '5px',
-              fontSize: '1.1rem',
-              cursor: 'pointer',
-              transition: 'background-color 0.3s'
-            }}
-            onMouseOver={(e) => e.target.style.backgroundColor = '#0056b3'}
-            onMouseOut={(e) => e.target.style.backgroundColor = '#007bff'}
-          >
-            Add to Cart
-          </button>
+          {!isAuthenticated && (
+            <div className="auth-prompt">
+              <p>Please <span onClick={() => navigate('/login')} className="auth-link">login</span> to add items to cart or wishlist</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Recommended Products */}
-      {recommendedProducts.length > 0 && (
-        <div>
-          <h2 style={{ marginBottom: '2rem' }}>You Might Also Like</h2>
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
-            gap: '2rem' 
-          }}>
-            {recommendedProducts.map(product => (
-              <ProductCard key={product.id} product={product} />
+      {recommendations.length > 0 && (
+        <div className="recommendations-section">
+          <h2>Recommended for You</h2>
+          <div className="recommendations-grid">
+            {recommendations.slice(0, 4).map(rec => (
+              <RecommendationCard key={rec.id} product={rec} />
             ))}
           </div>
         </div>
       )}
-
-      {/* CSS for loading spinner */}
-      <style jsx>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 };
