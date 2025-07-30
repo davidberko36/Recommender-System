@@ -16,25 +16,20 @@ const ProductDetail = () => {
 
   useEffect(() => {
     fetchProduct();
-    if (isAuthenticated) {
-      fetchRecommendations();
-    }
-  }, [id, isAuthenticated]);
+    fetchRecommendations(); // Content-based recommendations don't require authentication
+  }, [id]);
 
   const fetchProduct = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/products?product_id=${id}`);
-      const products = response.data.products || [];
-      const foundProduct = products.find(p => p.id === parseInt(id));
-      
-      if (foundProduct) {
-        setProduct(foundProduct);
-      } else {
-        setMessage('Product not found');
-      }
+      const response = await axios.get(`http://localhost:5000/api/products/${id}`);
+      setProduct(response.data);
     } catch (error) {
       console.error('Error fetching product:', error);
-      setMessage('Error loading product');
+      if (error.response?.status === 404) {
+        setMessage('Product not found');
+      } else {
+        setMessage('Error loading product');
+      }
     } finally {
       setLoading(false);
     }
@@ -42,10 +37,10 @@ const ProductDetail = () => {
 
   const fetchRecommendations = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/recommendations?limit=4`);
+      const response = await axios.get(`http://localhost:5000/api/products/${id}/recommendations`);
       setRecommendations(response.data.recommendations || []);
     } catch (error) {
-      console.error('Error fetching recommendations:', error);
+      console.error('Error fetching product recommendations:', error);
     }
   };
 
